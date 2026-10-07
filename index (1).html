@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="tr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Videodan Yazı Sil</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/webm-muxer@5.0.3/build/webm-muxer.js"></script>
+<script>
+if(!window.WebMMuxer)document.write('<script src="https://unpkg.com/webm-muxer@5.0.3/build/webm-muxer.js"><\/script>');
+window.addEventListener('error',e=>{const m=document.getElementById('msg2');if(m)m.textContent='Hata: '+(e.message||e.target&&e.target.src||'bilinmeyen')});
+window.addEventListener('unhandledrejection',e=>{const m=document.getElementById('msg2');if(m)m.textContent='Hata: '+(e.reason&&e.reason.message||e.reason)});
+</script>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#fff;--fg:#17171c;--card:#f3f3f7;--ac:#5b4bdb;--mu:#6b6b78}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15151a;--fg:#eee;--card:#222229;--ac:#8c7dff;--mu:#9a9aa8}}
+:root[data-theme="dark"]{--bg:#15151a;--fg:#eee;--card:#222229;--ac:#8c7dff;--mu:#9a9aa8}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,sans-serif}
+main{max-width:640px;margin:0 auto;padding:12px 16px 16px}
+header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+#mb{font-size:22px;padding:6px 12px;margin:0;background:var(--card);color:var(--fg)}
+#pn{font-size:19px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px}
+label{display:block;font-size:13px;color:var(--mu);margin:8px 0 4px}
+input[type=text],input[type=number]{width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid #8884;background:var(--bg);color:var(--fg);font-size:16px}
+input[type=range]{width:100%}
+button,.dl{background:var(--ac);color:#fff;border:0;border-radius:10px;padding:11px 14px;font-size:15px;margin:6px 6px 0 0;display:inline-block;text-decoration:none}
+button.s{background:#8884;color:var(--fg)}
+button:disabled{opacity:.5}
+canvas,video.o{width:100%;border-radius:10px;touch-action:none;background:#000;display:block}
+.row{display:flex;gap:8px}.row>div{flex:1}
+#msg,#msg2{font-size:14px;color:var(--mu);margin-top:8px;min-height:20px}
+small{color:var(--mu)}
+#ov{position:fixed;inset:0;background:#0007;display:none;z-index:9}
+#dr{position:fixed;top:0;left:0;bottom:0;width:min(320px,86vw);background:var(--bg);z-index:10;transform:translateX(-105%);transition:transform .2s;padding:calc(16px + env(safe-area-inset-top,0px)) 16px 16px;overflow:auto;box-sizing:border-box}
+#dr.open{transform:none}
+.pi{display:flex;align-items:center;gap:6px;background:var(--card);border-radius:10px;padding:4px 4px 4px 12px;margin-top:8px}
+.pi.cur{outline:2px solid var(--ac)}
+.pi span{flex:1;cursor:pointer;padding:8px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pi button{margin:0;background:none;color:var(--fg);padding:8px 10px}
+</style></head><body>
+<div id="ov"></div>
+<aside id="dr">
+  <h2 style="margin:0 0 4px">📁 Projelerim</h2>
+  <small>Projeler sadece senin bu cihazında/tarayıcında saklanır; başkaları göremez.</small>
+  <label>Yeni proje adı</label>
+  <input type="text" id="np" placeholder="Örn: Cancelo edit">
+  <button id="mk">+ Proje oluştur</button>
+  <div id="pl"></div>
+</aside>
+<main>
+<header><button id="mb">☰</button><div id="pn">Proje</div></header>
+
+<div class="card">
+<label>1) Video seç</label>
+<input type="file" id="f" accept="video/*">
+</div>
+
+<div class="card">
+<label>2) Silinecek yazı</label>
+<input type="text" id="txt" placeholder="Örn: altyazı, logo, @kullanici">
+<button id="scan" disabled>🔍 Yazıyı videoda bul</button>
+<div id="msg"></div>
+</div>
+
+<div class="card">
+<canvas id="c" width="320" height="180"></canvas>
+<input type="range" id="sl" min="0" max="1000" value="0" disabled>
+<small>Boş yere sürükle: yeni kutu. Kutuya dokun: seç ve taşı. Sarı köşelerden boyutlandır. Aşağıdan süresini ayarla.</small>
+<div class="row">
+<div><label>Başlangıç (sn)</label><input type="number" id="t0" value="0" min="0" step="0.1"></div>
+<div><label>Bitiş (sn)</label><input type="number" id="t1" value="9999" min="0" step="0.1"></div>
+</div>
+<button class="s" id="undo">🗑 Seçili kutuyu sil</button>
+<button class="s" id="clr">Hepsini temizle</button>
+</div>
+
+<div class="card">
+<button id="go" disabled>✨ Yazıyı kaldır ve videoyu oluştur</button>
+<button class="s" id="cancel" style="display:none">İptal</button>
+<div id="msg2"></div>
+<video class="o" id="out" controls playsinline style="display:none;margin-top:10px"></video>
+<a class="dl" id="dl" style="display:none">⬇ İndir</a>
+<small>Video işlenirken oynatılmaz; hazır olunca burada çıkar ve projene kaydedilir. İşlem bitene kadar sayfayı açık tut. Chrome önerilir.</small>
+</div>
+
+<video id="v" playsinline muted preload="auto" style="position:fixed;left:0;top:0;width:2px;height:2px;opacity:.01;pointer-events:none"></video>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const v=$('v'),cv=$('c'),ctx=cv.getContext('2d',{willReadFrequently:true});
+let boxes=[],busy=false,P=null,sel=-1,drag=null,cur=null,cancel=false;
+const norm=s=>s.toLocaleLowerCase('tr').replace(/[^\p{L}\p{N}]/gu,'');
+const seek=t=>new Promise(r=>{
+  let d=false;
+  const fin=()=>{if(d)return;d=true;v.removeEventListener('seeked',h);r()};
+  const h=()=>{if(v.requestVideoFrameCallback){v.requestVideoFrameCallback(fin);setTimeout(fin,250)}else fin()};
+  v.addEventListener('seeked',h);setTimeout(fin,1500);
+  v.currentTime=Math.max(0,Math.min(t,v.duration-0.001));
+});
+const msg=(t,id='msg')=>$(id).textContent=t;
+
+/* ---------- depolama (IndexedDB, kişiye/tarayıcıya özel) ---------- */
+const dbp=new Promise((ok,no)=>{try{const r=indexedDB.open('vys',1);r.onupgradeneeded=()=>{r.result.createObjectStore('p',{keyPath:'id'});r.result.createObjectStore('b')};r.onsuccess=()=>ok(r.result);r.onerror=()=>no()}catch(e){no()}});
+const tx=async(st,m,f)=>{const d=await dbp;return new Promise((ok,no)=>{const t=d.transaction(st,m),q=f(t.objectStore(st));t.oncomplete=()=>ok(q&&q.result);t.onerror=t.onabort=()=>no()})};
+const safe=async f=>{try{return await f()}catch(e){return null}};
+let tm;
+const save=()=>{clearTimeout(tm);tm=setTimeout(()=>{if(!P)return;P.boxes=boxes;P.text=$('txt').value;P.t=Date.now();const {fileBlob,...m}=P;safe(()=>tx('p','readwrite',s=>s.put(m)))},400)};
+const putBlob=(k,b)=>safe(()=>tx('b','readwrite',s=>s.put(b,P.id+':'+k)));
+const getBlob=(p,k)=>safe(()=>tx('b','readonly',s=>s.get(p.id+':'+k)));
+
+async function newProject(name){
+  const p={id:Date.now()+'-'+Math.random().toString(36).slice(2,6),name:name||'Yeni proje',text:'',boxes:[],t:Date.now()};
+  await safe(()=>tx('p','readwrite',s=>s.put(p)));
+  await openProject(p);
+}
+async function openProject(p){
+  if(busy)return;
+  P=p;boxes=p.boxes||[];sel=-1;
+  $('pn').textContent=p.name;$('txt').value=p.text||'';msg('');msg('','msg2');
+  $('sl').disabled=$('scan').disabled=$('go').disabled=true;
+  showResult(null);
+  const f=await getBlob(p,'f');
+  if(f)loadVideo(f);else{v.removeAttribute('src');cv.width=320;cv.height=180;ctx.clearRect(0,0,320,180)}
+  const r=await getBlob(p,'r');if(r&&P===p)showResult(r);
+  closeDrawer();
+}
+function showResult(b){
+  if(!b){$('out').style.display=$('dl').style.display='none';$('out').removeAttribute('src');return}
+  const u=URL.createObjectURL(b);$('out').src=u;$('out').style.display='block';
+  $('dl').href=u;$('dl').download=(P?P.name:'video')+'-temiz.webm';$('dl').style.display='inline-block';
+}
+async function renderList(){
+  const all=((await safe(()=>tx('p','readonly',s=>s.getAll())))||[]).sort((a,b)=>b.t-a.t);
+  if(P&&!all.find(x=>x.id===P.id))all.unshift(P);
+  $('pl').innerHTML='';
+  all.forEach(p=>{
+    const d=document.createElement('div');d.className='pi'+(P&&P.id===p.id?' cur':'');
+    const s=document.createElement('span');s.textContent=p.name;s.onclick=()=>openProject(p);
+    const x=document.createElement('button');x.textContent='🗑';x.onclick=async()=>{
+      if(busy)return;
+      await safe(()=>tx('p','readwrite',t=>t.delete(p.id)));
+      await safe(()=>tx('b','readwrite',t=>{t.delete(p.id+':f');return t.delete(p.id+':r')}));
+      if(P&&P.id===p.id){const rest=all.filter(y=>y.id!==p.id);rest.length?openProject(rest[0]):newProject('Proje 1')}
+      renderList();
+    };
+    d.append(s,x);$('pl').append(d);
+  });
+}
+const openDrawer=()=>{renderList();$('dr').classList.add('open');$('ov').style.display='block'};
+const closeDrawer=()=>{$('dr').classList.remove('open');$('ov').style.display='none'};
+$('mb').onclick=openDrawer;$('ov').onclick=closeDrawer;
+$('mk').onclick=async()=>{const n=$('np').value.trim();if(!n||busy)return;$('np').value='';await newProject(n);renderList()};
+$('txt').oninput=save;
+
+/* ---------- video yükleme ---------- */
+function loadVideo(blob){
+  if(P)P.fileBlob=blob;
+  v.onloadedmetadata=async()=>{
+    const sc=Math.min(1,1080/Math.max(v.videoWidth,v.videoHeight));
+    cv.width=Math.round(v.videoWidth*sc/2)*2;cv.height=Math.round(v.videoHeight*sc/2)*2;
+    $('t1').value=v.duration.toFixed(1);$('t0').value=0;
+    if(v.duration>30)msg('Video 30 sn’den uzun: işlem biraz sürer, sayfayı açık tut.');
+    $('sl').disabled=$('scan').disabled=$('go').disabled=false;
+    await seek(0);preview();
+  };
+  v.src=URL.createObjectURL(blob);
+}
+$('f').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  if(!P)await newProject('Proje 1');
+  boxes=[];sel=-1;showResult(null);
+  await putBlob('f',f);safe(()=>tx('b','readwrite',s=>s.delete(P.id+':r')));
+  save();loadVideo(f);
+};
+
+/* ---------- önizleme / kutular ---------- */
+const draw=()=>ctx.drawImage(v,0,0,cv.width,cv.height);
+const vis=(b,t=v.currentTime)=>t>=b.t0-0.001&&t<=b.t1+0.001;
+const hs=()=>Math.max(14,cv.width/28);
+function preview(){
+  draw();
+  ctx.lineWidth=Math.max(2,cv.width/200);
+  boxes.forEach((b,i)=>{if(i===sel||vis(b)){ctx.strokeStyle=i===sel?'#ffd60a':'#ff3b30';ctx.strokeRect(b.x,b.y,b.w,b.h)}});
+  const b=boxes[sel];
+  if(b){const q=hs()/2;ctx.fillStyle='#ffd60a';for(const [cx,cy] of [[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]])ctx.fillRect(cx-q/2,cy-q/2,q,q)}
+}
+$('sl').oninput=async e=>{if(busy)return;await seek(v.duration*e.target.value/1000);preview()};
+$('undo').onclick=()=>{if(sel>=0)boxes.splice(sel,1);else boxes.pop();sel=-1;preview();save()};
+$('clr').onclick=()=>{boxes=[];sel=-1;preview();save()};
+const pos=e=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*cv.width/r.width,y:(e.clientY-r.top)*cv.height/r.height}};
+const inside=(b,p)=>p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h;
+function corner(b,p){
+  const q=hs();
+  for(const [cx,cy,n] of [[b.x,b.y,'nw'],[b.x+b.w,b.y,'ne'],[b.x,b.y+b.h,'sw'],[b.x+b.w,b.y+b.h,'se']])
+    if(Math.abs(p.x-cx)<q&&Math.abs(p.y-cy)<q)return n;
+  return null;
+}
+function syncFields(){const b=boxes[sel];if(b){$('t0').value=Math.max(0,b.t0).toFixed(1);$('t1').value=Math.min(b.t1,v.duration).toFixed(1)}}
+['t0','t1'].forEach(id=>$(id).oninput=()=>{const b=boxes[sel];if(b){b.t0=+$('t0').value;b.t1=+$('t1').value;preview();save()}});
+cv.onpointerdown=e=>{
+  if(busy||!v.duration)return;const p=pos(e);cv.setPointerCapture(e.pointerId);
+  const s0=boxes[sel];
+  if(s0){const c=corner(s0,p);if(c){drag={m:'rs',c,o:{...s0}};return}}
+  for(let i=boxes.length-1;i>=0;i--){const b=boxes[i];
+    if(vis(b)&&inside(b,p)){sel=i;drag={m:'mv',s:p,o:{...b}};syncFields();preview();return}}
+  sel=-1;drag={m:'new',s:p};preview();
+};
+cv.onpointermove=e=>{
+  if(!drag)return;const p=pos(e);
+  if(drag.m==='new'){cur={x:Math.min(drag.s.x,p.x),y:Math.min(drag.s.y,p.y),w:Math.abs(p.x-drag.s.x),h:Math.abs(p.y-drag.s.y)};preview();ctx.strokeStyle='#ffd60a';ctx.strokeRect(cur.x,cur.y,cur.w,cur.h);return}
+  const b=boxes[sel],o=drag.o;
+  if(drag.m==='mv'){b.x=o.x+p.x-drag.s.x;b.y=o.y+p.y-drag.s.y}
+  else{
+    let l=o.x,r=o.x+o.w,t=o.y,bt=o.y+o.h;const c=drag.c;
+    if(c.includes('w'))l=p.x;else r=p.x;
+    if(c.includes('n'))t=p.y;else bt=p.y;
+    b.x=Math.min(l,r);b.w=Math.max(4,Math.abs(r-l));b.y=Math.min(t,bt);b.h=Math.max(4,Math.abs(bt-t));
+  }
+  preview();
+};
+cv.onpointerup=()=>{
+  if(drag&&drag.m==='new'&&cur&&cur.w>4&&cur.h>4){boxes.push({...cur,t0:+$('t0').value,t1:+$('t1').value});sel=boxes.length-1}
+  drag=cur=null;preview();save();
+};
+
+/* ---------- OCR ile yazı bulma ---------- */
+$('scan').onclick=async()=>{
+  const q=$('txt').value.trim();if(!q){msg('Önce silinecek yazıyı yaz.');return}
+  const toks=q.split(/\s+/).map(norm).filter(Boolean);
+  busy=true;$('scan').disabled=true;msg('Okuma motoru yükleniyor…');
+  let w;
+  try{w=await Promise.race([Tesseract.createWorker('tur'),new Promise((_,j)=>setTimeout(()=>j(),25000))])}
+  catch(e){msg('Otomatik yazı okuma motoru bu sayfada yüklenemedi. Lütfen yazının üstüne elle kutu çiz.');busy=false;$('scan').disabled=false;return}
+  let found=0;
+  try{
+    for(let t=0;t<v.duration;t+=0.5){
+      await seek(t);draw();
+      msg(`Taranıyor… %${Math.round(t/v.duration*100)} · ${found} eşleşme`);
+      const r=await w.recognize(cv);
+      for(const x of r.data.words){
+        const n=norm(x.text);if(!n)continue;
+        if(toks.some(k=>n.includes(k)||(n.length>2&&k.includes(n)))){
+          const p=3,b=x.bbox;
+          boxes.push({x:b.x0-p,y:b.y0-p,w:b.x1-b.x0+2*p,h:b.y1-b.y0+2*p,t0:Math.max(0,t-0.3),t1:t+0.3,ocr:true});found++;
+        }
+      }
+    }
+    await w.terminate();
+  }catch(e){msg('Tarama sırasında hata oldu. Elle kutu çizmeyi dene.')}
+  const man=boxes.filter(b=>!b.ocr),gr={};
+  boxes.filter(b=>b.ocr).forEach(b=>(gr[b.t0]=gr[b.t0]||[]).push(b));
+  const out=[];
+  for(const k in gr){const a=gr[k].sort((p,q)=>p.x-q.x);let c=null;
+    for(const b of a){
+      if(c&&b.x<=c.x+c.w+c.h*1.2&&b.y<c.y+c.h&&b.y+b.h>c.y){const x2=Math.max(c.x+c.w,b.x+b.w),y1=Math.min(c.y,b.y),y2=Math.max(c.y+c.h,b.y+b.h);c.x=Math.min(c.x,b.x);c.w=x2-c.x;c.y=y1;c.h=y2-y1}
+      else{c=b;out.push(c)}
+    }}
+  out.sort((a,b)=>a.t0-b.t0);
+  const tr=[];
+  for(const b of out){
+    const m=tr.find(c=>b.t0<=c.t1+0.05&&Math.abs(c.x+c.w/2-b.x-b.w/2)<b.h&&Math.abs(c.y+c.h/2-b.y-b.h/2)<b.h&&b.w/c.w>0.5&&b.w/c.w<2);
+    if(m){const x2=Math.max(m.x+m.w,b.x+b.w),y2=Math.max(m.y+m.h,b.y+b.h);m.x=Math.min(m.x,b.x);m.y=Math.min(m.y,b.y);m.w=x2-m.x;m.h=y2-m.y;m.t1=Math.max(m.t1,b.t1)}
+    else tr.push(b);
+  }
+  boxes=man.concat(tr);sel=-1;
+  await seek(0);preview();save();
+  if(found)msg(`Bitti: ${found} yerde bulundu. Artık videoyu oluşturabilirsin.`);
+  else msg('Yazı bulunamadı. Yazımı değiştir veya elle kutu çiz.');
+  busy=false;$('scan').disabled=false;
+};
+
+/* ---------- silme (kenarlardan doldur + doku) ---------- */
+function coons(d,w,h){
+  const W=w+2,o=new Float32Array(w*h*3),g=(x,y,c)=>d[(y*W+x)*4+c];
+  for(let j=0;j<h;j++){const v=(j+1)/(h+1);
+    for(let i=0;i<w;i++){const u=(i+1)/(w+1);
+      for(let c=0;c<3;c++){
+        const T=g(i+1,0,c),B=g(i+1,h+1,c),L=g(0,j+1,c),R=g(w+1,j+1,c);
+        const a=g(0,0,c),b=g(w+1,0,c),e=g(0,h+1,c),f=g(w+1,h+1,c);
+        o[(j*w+i)*3+c]=(1-v)*T+v*B+(1-u)*L+u*R-((1-u)*(1-v)*a+u*(1-v)*b+(1-u)*v*e+u*v*f);
+      }}}
+  return o;
+}
+function fill(b){
+  const x=Math.max(1,Math.floor(b.x)),y=Math.max(1,Math.floor(b.y));
+  const w=Math.min(cv.width-1-x,Math.ceil(b.w)),h=Math.min(cv.height-1-y,Math.ceil(b.h));
+  if(w<2||h<2)return;
+  const T=ctx.getImageData(x-1,y-1,w+2,h+2),bt=coons(T.data,w,h),D=T.data;
+  let sy=y-h-3;if(sy<1)sy=y+h+3;
+  let S=null,bs=null;
+  if(sy+h+2<=cv.height){S=ctx.getImageData(x-1,sy-1,w+2,h+2);bs=coons(S.data,w,h)}
+  for(let j=0;j<h;j++)for(let i=0;i<w;i++)for(let c=0;c<3;c++){
+    const k=(j*w+i)*3+c;let val=bt[k];
+    if(S)val+=Math.max(-12,Math.min(12,S.data[((j+1)*(w+2)+i+1)*4+c]-bs[k]));
+    D[((j+1)*(w+2)+i+1)*4+c]=val;
+  }
+  ctx.putImageData(T,x-1,y-1);
+}
+function render(t){draw();for(const b of boxes)if(t>=b.t0&&t<=b.t1)fill(b)}
+
+/* ---------- işleme: oynatmadan, kare kare ---------- */
+$('cancel').onclick=()=>cancel=true;
+$('go').onclick=async()=>{
+  if(busy)return;
+  if(!boxes.length){msg('Önce yazıyı bul veya kutu çiz.','msg2');return}
+  if(!window.VideoEncoder||!window.WebMMuxer){msg('Bu tarayıcı veya ağ ayarı desteklemiyor. Güncel Chrome kullan.','msg2');return}
+  busy=true;cancel=false;$('go').disabled=true;$('cancel').style.display='inline-block';showResult(null);sel=-1;
+  let lock=null;try{lock=await navigator.wakeLock.request('screen')}catch(e){}
+  try{
+    const fps=30,dur=v.duration,N=Math.floor(dur*fps),W=cv.width,H=cv.height;
+    let hw='prefer-software';
+    const base={codec:'vp8',width:W,height:H,bitrate:5e6,framerate:fps};
+    if(!(await VideoEncoder.isConfigSupported({...base,hardwareAcceleration:hw})).supported)hw='no-preference';
+    const vc=['vp8','V_VP8'];
+    let ab=null;
+    try{const ac=new AudioContext({sampleRate:48000});ab=await ac.decodeAudioData(await P.fileBlob.arrayBuffer());ac.close()}catch(e){}
+    const ch=ab?Math.min(2,ab.numberOfChannels):0,{Muxer,ArrayBufferTarget}=WebMMuxer,tg=new ArrayBufferTarget();
+    const mx=new Muxer({target:tg,video:{codec:vc[1],width:W,height:H,frameRate:fps},audio:ab?{codec:'A_OPUS',numberOfChannels:ch,sampleRate:48000}:undefined});
+    let err=null;
+    const enc=new VideoEncoder({output:(c,m)=>mx.addVideoChunk(c,m),error:e=>err=e});
+    enc.configure({...base,hardwareAcceleration:hw});
+    let ae=null,ao=0;
+    if(ab){ae=new AudioEncoder({output:(c,m)=>mx.addAudioChunk(c,m),error:e=>err=e});ae.configure({codec:'opus',sampleRate:48000,numberOfChannels:ch,bitrate:128000})}
+    const feed=upTo=>{while(ab&&ao<upTo&&ao<ab.length){
+      const n=Math.min(4800,ab.length-ao),d=new Float32Array(n*ch);
+      for(let k=0;k<ch;k++)d.set(ab.getChannelData(k).subarray(ao,ao+n),k*n);
+      ae.encode(new AudioData({format:'f32-planar',sampleRate:48000,numberOfFrames:n,numberOfChannels:ch,timestamp:Math.round(ao/48000*1e6),data:d}));ao+=n}};
+    for(let i=0;i<N;i++){
+      if(cancel||err)break;
+      const t=(i+0.5)/fps;
+      await seek(t);render(t);
+      const fr=new VideoFrame(cv,{timestamp:Math.round(i*1e6/fps),duration:Math.round(1e6/fps)});
+      enc.encode(fr,{keyFrame:i%90===0});fr.close();
+      feed(Math.round((i+1)/fps*48000));
+      const w0=Date.now();
+      while(enc.encodeQueueSize>6){if(Date.now()-w0>10000)throw new Error('kodlayıcı takıldı (kare '+i+')');await new Promise(r=>setTimeout(r,8))}
+      if(i%4===0)msg(`Hazırlanıyor… %${Math.round(i/N*100)} (kare ${i}/${N})`,'msg2');
+    }
+    if(cancel){msg('İptal edildi.','msg2')}
+    else if(err){throw err}
+    else{
+      feed(Infinity);
+      await enc.flush();if(ae)await ae.flush();
+      mx.finalize();
+      const blob=new Blob([tg.buffer],{type:'video/webm'});
+      await putBlob('r',blob);showResult(blob);
+      msg('Hazır! ✅ Projene kaydedildi.','msg2');
+    }
+  }catch(e){msg('İşlem sırasında hata oldu: '+(e&&e.message?e.message:e),'msg2')}
+  try{lock&&lock.release()}catch(e){}
+  busy=false;$('go').disabled=false;$('cancel').style.display='none';await seek(0);preview();
+};
+
+/* ---------- başlangıç ---------- */
+(async()=>{
+  const all=((await safe(()=>tx('p','readonly',s=>s.getAll())))||[]).sort((a,b)=>b.t-a.t);
+  all.length?openProject(all[0]):newProject('Proje 1');
+})();
+</script></body></html>
